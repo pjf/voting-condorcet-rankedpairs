@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Voting-Condorcet-RankedPairs.t
+lib/Voting/Condorcet/RankedPairs.pm

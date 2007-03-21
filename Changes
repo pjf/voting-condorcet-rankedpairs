@@ -1,6 +1,4 @@
 Revision history for Perl extension Voting::Condorcet::RankedPairs.
 
-0.01  Wed Mar 21 11:27:12 2007
-	- original version; created by h2xs 1.23 with options
-		-b 5.8.0 -XA -n Voting::Condorcet::RankedPairs
-
+1.00  Wed Mar 21 11:27:12 2007
+	- Original release to CPAN

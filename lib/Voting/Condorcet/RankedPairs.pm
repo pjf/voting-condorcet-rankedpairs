@@ -5,7 +5,7 @@ use warnings;
 use Graph;
 use Carp qw(croak);
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 # Our majorities are in positon 2 of our stored pairs array.
 use constant INDEX_MAJORITY => 2; 
@@ -40,6 +40,7 @@ Voting::Condorcet::RankedPairs - Ranked Pairs voting resolution.
   					  # than Alice.
 
   my $graph  = $rp->graph;		# Underlying Graph object used.
+  					# (Advanced users only)
 
   $rp->compile;				# Force graph compilation.
   					# (Advanced users only)
@@ -90,32 +91,6 @@ sub _init {
 	$this->{max_dist} = HALF_RANGE;
 
 	return $this;
-}
-
-=head2 graph
-
-  my $graph = $rp->graph;
-
-Returns the underlying L<Graph> object used.  This isn't a copy of
-the object, it I<is> the object, so be careful if you plan on
-making changes to it.
-
-=cut
-
-sub graph {
-	my ($this) = @_;
-
-	$this->compile;
-
-	return $this->_graph;
-}
-
-# This fetches our graph without attempting a compile.  It's required
-# for operations such as _add that actually do the work of compiling
-# the graph in the first place.
-
-sub _graph {
-	return $_[0]->{graph};
 }
 
 =head2 add
@@ -209,6 +184,8 @@ sub _add {
 
 =head2 winner
 
+  my $winner = $rp->winner;
+
 This returns the 'winner' of the competition.  This always returns
 a single result, and does not check for draws.  Use L<strict_winners>
 (below) if a draw may exist.
@@ -222,8 +199,10 @@ sub winner {
 
 =head2 strict_winners
 
+  my @winners = $rp->strict_winners;
+
 In some cirumstances two or more entries can be considered a draw.  This
-method returns an array reference to all the winners of a contest.  In
+method returns an array to all the winners of a contest.  In
 most circumstances this will be a single entry.
 
 =cut
@@ -355,12 +334,50 @@ sub compile {
 	return;
 }
 
+=head2 graph
+
+  my $graph = $rp->graph;
+
+Returns the underlying L<Graph> object used.  This isn't a copy of
+the object, it I<is> the object, so be careful if you plan on
+making changes to it.
+
+=cut
+
+sub graph {
+	my ($this) = @_;
+
+	$this->compile;
+
+	return $this->_graph;
+}
+
+# This fetches our graph without attempting a compile.  It's required
+# for operations such as _add that actually do the work of compiling
+# the graph in the first place.
+
+sub _graph {
+	return $_[0]->{graph};
+}
+
 1;
 __END__
 
 =head1 BUGS
 
+Calling any method besides from L<add> will cause the graph to be
+compiled, at which point any significant edges become "locked".  Adding
+edges after this point will result in them being considered less
+significant than any edges present at the time of the compile, regardless
+of their majority.
 
+Rankings are obtained by repeatedly removing source nodes from the
+graph.  An alternate (but much slower) way of producing rankings
+would be to recompile the entire graph without those nodes entirely.
+In some circumstances this may produce different results for the
+runner-ups.
+
+This is not a definitive list of bugs.
 
 =head1 SEE ALSO
 

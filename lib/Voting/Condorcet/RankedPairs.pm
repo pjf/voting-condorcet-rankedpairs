@@ -5,7 +5,7 @@ use warnings;
 use Graph;
 use Carp qw(croak);
 
-our $VERSION = '0.01';
+our $VERSION = '1.00';
 
 # Our majorities are in positon 2 of our stored pairs array.
 use constant INDEX_MAJORITY => 2; 

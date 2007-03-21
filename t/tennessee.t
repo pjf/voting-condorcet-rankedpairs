@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 use strict;
-use Test::More tests => 7;
+use Test::More tests => 8;
 
 # This example is from Wikipedia.
 # http://en.wikipedia.org/wiki/Ranked_Pairs
@@ -18,6 +18,12 @@ $rp->add('Nashville'   => 'Knoxville',   0.68);
 $rp->add('Chattanooga' => 'Knoxville',   0.83);
 
 is($rp->winner,'Nashville');
+
+is_deeply(
+	[$rp->rankings],[qw(Nashville Chattanooga Knoxville Memphis)],
+	"Full rankings listing."
+);
+
 
 is_deeply([ $rp->better_than('Nashville') ],[],"Nobody beats Nashville");
 is_deeply([ $rp->better_than('Chattanooga') ],['Nashville'],"Nash beats Chat");

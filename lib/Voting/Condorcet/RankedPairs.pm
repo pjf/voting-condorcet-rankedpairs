@@ -22,25 +22,35 @@ Voting::Condorcet::RankedPairs - Ranked Pairs voting resolution.
 
   use Voting::Condorcet::RankedPairs;
 
-  my $rp = Voting::Condorcet::RankedPairs->new;
+  my $rp = Voting::Condorcet::RankedPairs->new();
 
-  $rp->add('Alice' => 'Bob', 0.7);
-  $rp->add('Alice' => 'Eve', 0.3);
+  $rp->add('Alice', 'Bob', 0.7);	# Alice got 70% votes, Bob 30%
+  $rp->add('Alice', 'Eve', 0.4);	# Alice got 40% votes, Eve 60%
 
-  my $winner   = $rp->winner;		# The winner.
+  my $winner    = $rp->winner;		# The winner, ignores ties.
+  my @winners   = $rp->strict_winners;	# All winners, allows ties.
 
-  my @rankings = $rp->rankings;		# All entries, ranked from
-  					# most-favoured to least
-					# favoured.
+  my @rankings  = $rp->rankings;	# All entries, best to worst.
+  my @rankings2 = $rp->strict_rankings;	# All entries, allowing ties.
 
-  # better_than and worse_than return significant results only.
+  my @better = $rp->better_than('Alice'); # Entries significantly better
+  					  # than Alice.
 
-  my @better = $rp->better_than('Alice');	
-  my @worse  = $rp->worse_than('Alice');
+  my @worse  = $rp->worse_than('Alice');  # Entries significantly worse
+  					  # than Alice.
 
-  my $graph  = $rp->graph;	# Underlying Graph object used.
+  my $graph  = $rp->graph;		# Underlying Graph object used.
+
+  $rp->compile;				# Force graph compilation.
+  					# (Advanced users only)
 
 =head1 DESCRIPTION
+
+This module implements a I<Ranked Pairs> Condorcet voting system,
+as described at L<http://en.wikipedia.org/wiki/Ranked_Pairs>.
+
+Ranked pairs uses a directed graph to determine the winner and
+rankings from a series of pairwise comparisons.
 
 =cut
 
@@ -171,7 +181,7 @@ sub add {
 		}
 		$this->{max_dist} = $distance;
 
-		$this->_add($winner,$loser,$result);
+		$this->_add($winner,$loser);
 	} else {
 		push(@{$this->{pairs}},[$winner,$loser,$result]);
 	}
@@ -223,6 +233,57 @@ sub strict_winners {
 	return $_[0]->graph->predecessorless_vertices;
 }
 
+=head2 rankings
+
+   my @results = $rp->rankings;
+
+This method returns an ordered list of contestents, with the winner in
+position 0.  Ties are ignored; if two or more entries are tied they
+will be returned adjacent to each other, but in an indeterminate
+sequence.  Use L<strict_rankings> if tie detection is required.
+
+=cut
+
+sub rankings {
+	my ($this) = @_;
+
+	croak "Useless call to rankings in void context" if not defined wantarray;
+
+	return map { @$_ } $this->strict_rankings;
+}
+
+=head2 strict_rankings
+
+  my @results = $rp->strict_rankings;
+
+This method returns an ordered list of lists.  Each element contains
+a reference to all contestants at that position.  This will usually
+be a single element, but may contain multiple entries in the case
+of draws.
+
+=cut
+
+sub strict_rankings {
+	my ($this) = @_;
+
+	croak "Useless call to strict_rankings in void context" if not defined wantarray;
+
+	# Take a copy of the graph.  Don't hurt our original.
+	my $graph = $this->graph->copy;
+	my @rankings;
+
+	# Iteratively find and remove the winners from the graph.
+
+	while (my @contestants = $graph->predecessorless_vertices) {
+		push(@rankings, \@contestants);
+		foreach my $vertex (@contestants) {
+			$graph->delete_vertex($vertex);
+		}
+	}
+
+	return @rankings;
+}
+
 =head2 better_than
 
   my @higher_ranked = $rp->better_than("Alice");
@@ -255,7 +316,7 @@ sub worse_than {
 	croak "Useless call to worse_than in void context" if not defined wantarray;
 	my ($this, $node) = @_;
 
-	return $this->graph->sucessors($node);
+	return $this->graph->successors($node);
 }
 
 =head2 compile
@@ -297,6 +358,10 @@ sub compile {
 1;
 __END__
 
+=head1 BUGS
+
+
+
 =head1 SEE ALSO
 
 The L<Graph> module.
@@ -305,6 +370,9 @@ L<http://en.wikipedia.org/wiki/Ranked_Pairs> - Wikipedia article on Ranked
 Pairs.
 
 L<http://condorcet.org/rp/> - Ranked Pairs discussion at Condorcet.org
+
+L<http://en.wikipedia.org/wiki/Condorcet_method> - Description of
+condorcet methods.
 
 =head1 AUTHOR
 

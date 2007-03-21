@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 use strict;
-use Test::More tests => 4;
+use Test::More tests => 17;
 
 use Voting::Condorcet::RankedPairs;
 
@@ -20,12 +20,40 @@ $rp->add('A' => 'B', 0.68);
 $rp->add('B' => 'C', 0.72);
 $rp->add('C' => 'A', 0.52);
 
-is($rp->winner,"A","Circular test");
+results_check($rp);
 
-# In the third of our tests here, we should see that only B beats
-# C.  Even though 'A' has placed first, they were an (insignificant)
-# underdog to C in the pairwise matches.
+my $rp2 = Voting::Condorcet::RankedPairs->new(ordered_input => 1);
 
-is_deeply([$rp->better_than('A')],[],"Nobody's better than A");
-is_deeply([$rp->better_than('B')],['A'],"A bets B");
-is_deeply([$rp->better_than('C')],['B'],"Only B beats C.");
+$rp2->add('A' => 'B', 0.68);
+eval { $rp2->add('B' => 'C', 0.72); };
+ok($@, "Out of order link test");
+
+my $rp3 = Voting::Condorcet::RankedPairs->new(ordered_input => 1);
+
+$rp3->add('B' => 'C', 0.72);
+$rp3->add('A' => 'B', 0.68);
+$rp3->add('C' => 'A', 0.52);
+
+results_check($rp3);
+
+sub results_check {
+
+	my $rp = shift;
+
+	is($rp->winner,"A","Circular test");
+
+	is_deeply([$rp->rankings],[qw(A B C)],"Rankings order");
+
+	# In the third of our tests here, we should see that only B beats
+	# C.  Even though 'A' has placed first, they were an (insignificant)
+	# underdog to C in the pairwise matches.
+
+	is_deeply([$rp->better_than('A')],[],"Nobody's better than A");
+	is_deeply([$rp->better_than('B')],['A'],"A bets B");
+	is_deeply([$rp->better_than('C')],['B'],"Only B beats C.");
+
+	is_deeply([$rp->worse_than('A')],['B'],"B is worse than A");
+	is_deeply([$rp->worse_than('B')],['C'],"C is worse than B");
+	is_deeply([$rp->worse_than('C')],[],"C sucks");
+
+}

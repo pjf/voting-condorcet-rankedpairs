@@ -1,3 +1,4 @@
+.cvsignore
 Changes
 lib/Voting/Condorcet/RankedPairs.pm
 Makefile.PL

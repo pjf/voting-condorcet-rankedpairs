@@ -1,76 +1,314 @@
 package Voting::Condorcet::RankedPairs;
 
-use 5.008;
 use strict;
 use warnings;
-
-require Exporter;
-
-our @ISA = qw(Exporter);
-
-# Items to export into callers namespace by default. Note: do not export
-# names by default without a very good reason. Use EXPORT_OK instead.
-# Do not simply export all your public functions/methods/constants.
-
-# This allows declaration	use Voting::Condorcet::RankedPairs ':all';
-# If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
-# will save memory.
-our %EXPORT_TAGS = ( 'all' => [ qw(
-	
-) ] );
-
-our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
-
-our @EXPORT = qw(
-	
-);
+use Graph;
+use Carp qw(croak);
 
 our $VERSION = '0.01';
 
+# Our majorities are in positon 2 of our stored pairs array.
+use constant INDEX_MAJORITY => 2; 
 
-# Preloaded methods go here.
-
-1;
-__END__
-# Below is stub documentation for your module. You'd better edit it!
+use constant RANGE_MIN    => 0;
+use constant RANGE_MAX    => 1;
+use constant HALF_RANGE   => (RANGE_MIN + RANGE_MAX) / 2;
 
 =head1 NAME
 
-Voting::Condorcet::RankedPairs - Perl extension for blah blah blah
+Voting::Condorcet::RankedPairs - Ranked Pairs voting resolution.
 
 =head1 SYNOPSIS
 
   use Voting::Condorcet::RankedPairs;
-  blah blah blah
+
+  my $rp = Voting::Condorcet::RankedPairs->new;
+
+  $rp->add('Alice' => 'Bob', 0.7);
+  $rp->add('Alice' => 'Eve', 0.3);
+
+  my $winner   = $rp->winner;		# The winner.
+
+  my @rankings = $rp->rankings;		# All entries, ranked from
+  					# most-favoured to least
+					# favoured.
+
+  # better_than and worse_than return significant results only.
+
+  my @better = $rp->better_than('Alice');	
+  my @worse  = $rp->worse_than('Alice');
+
+  my $graph  = $rp->graph;	# Underlying Graph object used.
 
 =head1 DESCRIPTION
 
-Stub documentation for Voting::Condorcet::RankedPairs, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
+=cut
 
-Blah blah blah.
+my %DEFAULTS = (
+	ordered_input => 0,
+);
 
-=head2 EXPORT
+=head2 new
 
-None by default.
+   my $rp  = Voting::Condorcet::RankedPairs->new();
+   my $rp2 = Voting::Condorcet::RankedPairs->new(ordered_input => 1);
 
+This method creates a new Ranked Pairs object.  The C<ordered_input>
+option, if set, allows the module to perform a number of time and
+space optimisations, but requires that data be added in strict
+most-significant to least-significant order.
 
+=cut
+
+sub new {
+	my ($class, @args) = @_;
+
+	my $this = bless({},$class);
+
+	$this->_init(@args);
+
+	return $this;
+}
+
+sub _init {
+	my $this = shift;
+	my %args = (%DEFAULTS,@_);
+
+	$this->{ordered_input}         = $args{ordered_input};
+	$this->{graph} = Graph->new;
+	$this->{pairs} = [];
+	$this->{max_dist} = HALF_RANGE;
+
+	return $this;
+}
+
+=head2 graph
+
+  my $graph = $rp->graph;
+
+Returns the underlying L<Graph> object used.  This isn't a copy of
+the object, it I<is> the object, so be careful if you plan on
+making changes to it.
+
+=cut
+
+sub graph {
+	my ($this) = @_;
+
+	$this->compile;
+
+	return $this->_graph;
+}
+
+# This fetches our graph without attempting a compile.  It's required
+# for operations such as _add that actually do the work of compiling
+# the graph in the first place.
+
+sub _graph {
+	return $_[0]->{graph};
+}
+
+=head2 add
+
+  $rp->add('Alice','Bob',0.7);	# Alice vs Bob, Alice gets 70% votes
+  $rp->add('Bob','Eve',0.4);    # Bob vs Eve,   Bob gets only 40% votes
+
+This method adds the results of a pairwise contest.  It always
+takes exactly three arguments: the two contestants, and a fractional
+number between 0 and 1 indicating the number of votes in favour
+of the first contestant.
+
+A score of 0.5 indicates a tie, a score of 1.00 would indicate all
+votes fell to the first contestant, and a score of 0.00 would indicate
+all votes fell to the second.
+
+If C<ordered_input> was set when the object was created, then
+contests must be added in order of most relevance (scores furthest
+from 0.50) to least relevance (scores closest to 0.50).  Adding
+scores out of order when C<ordered_input> is set will result in
+an exception.
+
+Scores of exactly 0.5 result in the contestants being added to
+the graph, but no edge being drawn.
+
+=cut
+
+sub add {
+	my ($this, $winner, $loser, $result) = @_;
+
+	if (@_ != 4) {
+		croak("add() must be given two nodes and a result (received:".join(",",@_));
+	}
+
+	if ($result < RANGE_MIN or $result > RANGE_MAX) {
+		croak "add() must be given a fractional result between 0 and 1.  Received $result";
+	}
+
+	# If it's an exact draw, then add the nodes to the graph,
+	# but no edge.  We can do this immediately.
+
+	if ($result == HALF_RANGE) {
+		$this->_graph->add_vertex($winner)->add_vertex($loser);
+		return;
+	}
+
+	# We assume that $winner beats $loser.  Swap them
+	# around if this is not currently correct.
+	
+	($winner,$loser) = ($loser,$winner) if ($result < HALF_RANGE);
+
+	if ($this->{ordered_input}) {
+
+		# Results must be fed to us in most-significant
+		# to least significant order.  We check that here.
+		# If we're given results out of order, then an
+		# exception is thrown.
+
+		my $distance = abs(HALF_RANGE - $result);
+		my $max_dist = $this->{max_dist};
+		if ($distance > $max_dist) {
+			croak "Out of order pair detected in ordered_input mode.  ($winner,$loser) has a majority of $distance, where it must be less than $max_dist";
+		}
+		$this->{max_dist} = $distance;
+
+		$this->_add($winner,$loser,$result);
+	} else {
+		push(@{$this->{pairs}},[$winner,$loser,$result]);
+	}
+
+	return;
+}
+
+# This actually inserts an edge into our voting graph.
+# It assumes it's being called with the correct arguments.
+
+sub _add {
+	my ($this,$winner,$loser) = @_;
+
+	my $graph = $this->_graph;
+
+	$graph->add_edge($winner,$loser);
+
+	# If we just made a cycle, then reverse our action.
+	if ($graph->is_cyclic) {
+		$graph->delete_edge($winner,$loser);
+	}
+
+	return;
+}
+
+=head2 winner
+
+This returns the 'winner' of the competition.  This always returns
+a single result, and does not check for draws.  Use L<strict_winners>
+(below) if a draw may exist.
+
+=cut
+
+sub winner {
+	croak "Useless call to winner in void context" if not defined wantarray;
+	return ($_[0]->strict_winners)[0];
+}
+
+=head2 strict_winners
+
+In some cirumstances two or more entries can be considered a draw.  This
+method returns an array reference to all the winners of a contest.  In
+most circumstances this will be a single entry.
+
+=cut
+
+sub strict_winners {
+	croak "Useless call to strict_winners in void context" if not defined wantarray;
+	return $_[0]->graph->predecessorless_vertices;
+}
+
+=head2 better_than
+
+  my @higher_ranked = $rp->better_than("Alice");
+
+This function returns all the nodes that I<directly> beat the
+given node with significance.  In terms of graphs, these are all
+the nodes that have the given node as its destination (ie, its
+predecessors).
+
+=cut
+
+sub better_than {
+	croak "Useless call to better_than in void context" if not defined wantarray;
+	my ($this, $node) = @_;
+
+	return $this->graph->predecessors($node);
+}
+
+=head2 worse_than
+
+  my @lower_ranked = $rp->worse_than("Alice");
+
+This function returns all nodes that are I<directly> beaten
+by the given node.  In terms of graphs, these are the
+nodes successors.
+
+=cut
+
+sub worse_than {
+	croak "Useless call to worse_than in void context" if not defined wantarray;
+	my ($this, $node) = @_;
+
+	return $this->graph->sucessors($node);
+}
+
+=head2 compile
+
+  $rp->compile;
+
+This method will construct the underlying graph needed to find results.
+This method has no effect if the object was created with
+C<ordered_input> set to true.
+
+Normally there is no need to call this method by hand.  It is
+automatically from any function that needs a compiled graph.
+
+=cut
+
+sub compile {
+	my ($this) = @_;
+
+	return unless @{$this->{pairs}};
+
+	# Sort our pairs from largest marjority to smallest majority.
+	# In this case, our majority is the distance from the center-point
+	# of our range (0.5 by default).
+
+	my @pairs = sort { 
+		abs($b->[INDEX_MAJORITY] - HALF_RANGE) <=>
+		abs($a->[INDEX_MAJORITY] - HALF_RANGE)
+	} @{$this->{pairs}};
+
+	foreach my $pairwise (@pairs) {
+		$this->_add(@$pairwise);
+	}
+
+	$this->{pairs} = [];
+	
+	return;
+}
+
+1;
+__END__
 
 =head1 SEE ALSO
 
-Mention other useful documentation such as the documentation of
-related modules or operating system documentation (such as man pages
-in UNIX), or any relevant external documentation such as RFCs or
-standards.
+The L<Graph> module.
 
-If you have a mailing list set up for your module, mention it here.
+L<http://en.wikipedia.org/wiki/Ranked_Pairs> - Wikipedia article on Ranked
+Pairs.
 
-If you have a web site set up for your module, mention it here.
+L<http://condorcet.org/rp/> - Ranked Pairs discussion at Condorcet.org
 
 =head1 AUTHOR
 
-Paul Fenwick, E<lt>pjf@E<gt>
+Paul Fenwick, E<lt>pjf@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
@@ -79,6 +317,5 @@ Copyright (C) 2007 by Paul Fenwick
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.4 or,
 at your option, any later version of Perl 5 you may have available.
-
 
 =cut

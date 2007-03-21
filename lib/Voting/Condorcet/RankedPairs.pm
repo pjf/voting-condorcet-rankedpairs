@@ -5,7 +5,7 @@ use warnings;
 use Graph;
 use Carp qw(croak);
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 
 # Our majorities are in positon 2 of our stored pairs array.
 use constant INDEX_MAJORITY => 2; 
@@ -187,7 +187,7 @@ sub _add {
   my $winner = $rp->winner;
 
 This returns the 'winner' of the competition.  This always returns
-a single result, and does not check for draws.  Use L<strict_winners>
+a single result, and does not check for draws.  Use L</strict_winners>
 (below) if a draw may exist.
 
 =cut
@@ -219,7 +219,7 @@ sub strict_winners {
 This method returns an ordered list of contestents, with the winner in
 position 0.  Ties are ignored; if two or more entries are tied they
 will be returned adjacent to each other, but in an indeterminate
-sequence.  Use L<strict_rankings> if tie detection is required.
+sequence.  Use L</strict_rankings> if tie detection is required.
 
 =cut
 
@@ -306,8 +306,12 @@ This method will construct the underlying graph needed to find results.
 This method has no effect if the object was created with
 C<ordered_input> set to true.
 
-Normally there is no need to call this method by hand.  It is
-automatically from any function that needs a compiled graph.
+Normally there is no need to call this method by hand.  It is called
+automatically from any function that needs a compiled graph.  However
+it may be desirable to call C<compile> before object serialization or
+caching.
+
+Calls to this method on an already compiled graph will have no effect.
 
 =cut
 
@@ -337,10 +341,15 @@ sub compile {
 =head2 graph
 
   my $graph = $rp->graph;
+  my $copy  = $rp->graph->copy;
 
 Returns the underlying L<Graph> object used.  This isn't a copy of
 the object, it I<is> the object, so be careful if you plan on
-making changes to it.
+making changes to it.  Use C<< $rp->graph->copy >> to receive a copy
+of the graph.
+
+Normally there's no need to call this method unless you really have
+a use for the L<Graph> object.
 
 =cut
 
@@ -365,7 +374,7 @@ __END__
 
 =head1 BUGS
 
-Calling any method besides from L<add> will cause the graph to be
+Calling any method besides from L</add> will cause the graph to be
 compiled, at which point any significant edges become "locked".  Adding
 edges after this point will result in them being considered less
 significant than any edges present at the time of the compile, regardless

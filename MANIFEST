@@ -6,5 +6,6 @@ MANIFEST
 README
 t/ambiguity.t
 t/draw.t
+t/exceptions.t
 t/pod.t
 t/tennessee.t
